@@ -15,7 +15,7 @@ __all__ = ["Stewrd"]
 
 _DEFAULT_BASE_URL = "https://api.stewrd.dev"
 _DEFAULT_TIMEOUT = 120.0  # seconds
-_USER_AGENT = "stewrd-python/1.0.0"
+_USER_AGENT = "stewrd-python/1.0.1"
 
 
 class _AgentNamespace:
