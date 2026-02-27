@@ -94,14 +94,21 @@ class AgentStream:
             return None
 
         if event_type == "token":
-            return TokenEvent(content=parsed.get("content", ""))
+            # API sends {"text": "..."} — normalize to content
+            return TokenEvent(content=parsed.get("text") or parsed.get("content", ""))
         if event_type == "tool_start":
             return ToolStartEvent(tool=parsed.get("tool", ""))
         if event_type == "tool_end":
             return ToolEndEvent(tool=parsed.get("tool", ""))
         if event_type == "done":
-            resp = AgentResponse.from_dict(parsed.get("response", {}))
-            usage_data = parsed.get("usage") or (parsed.get("response") or {}).get("usage", {})
+            # API sends flat: {request_id, message, files, tokens_used, duration_ms}
+            # Build AgentResponse from flat or nested shape
+            if "response" in parsed:
+                resp = AgentResponse.from_dict(parsed["response"])
+                usage_data = parsed.get("usage") or parsed["response"].get("usage", {})
+            else:
+                resp = AgentResponse.from_dict(parsed)
+                usage_data = parsed
             return DoneEvent(response=resp, usage=Usage.from_dict(usage_data))
         if event_type == "error":
             return ErrorEvent(code=parsed.get("code", ""), message=parsed.get("message", ""))

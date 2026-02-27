@@ -137,13 +137,11 @@ class Stewrd:
     ) -> httpx.Response:
         """Send a POST request, raising ``StewrdError`` on non-2xx responses."""
         if stream:
-            response = self._client.stream("POST", path, json=body)
-            # Enter the stream context so the caller can iterate
-            resp = response.__enter__()
+            request = self._client.build_request("POST", path, json=body)
+            resp = self._client.send(request, stream=True)
             if resp.status_code >= 400:
-                # Read the error body before raising
                 resp.read()
-                response.__exit__(None, None, None)
+                resp.close()
                 self._handle_error(resp)
             return resp
 

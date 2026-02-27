@@ -90,7 +90,7 @@ class AgentResponse:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AgentResponse":
         return cls(
-            id=data.get("id", ""),
+            id=data.get("id") or data.get("request_id", ""),
             object=data.get("object", "agent.response"),
             message=data.get("message", ""),
             capabilities_used=data.get("capabilities_used", []),
