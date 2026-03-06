@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import httpx
 
 from .errors import StewrdError
 from .streaming import AgentStream
-from .types import AgentResponse, InputFile
+from .types import AgentResponse, InputFile, ToolDefinition, ToolOutput
 
 __all__ = ["Stewrd"]
 
 _DEFAULT_BASE_URL = "https://api.stewrd.dev"
 _DEFAULT_TIMEOUT = 120.0  # seconds
-_USER_AGENT = "stewrd-python/1.0.1"
+_USER_AGENT = "stewrd-python/1.1.0"
 
 
 class _AgentNamespace:
@@ -30,6 +30,7 @@ class _AgentNamespace:
         *,
         capabilities: Optional[Sequence[str]] = None,
         files: Optional[Sequence[InputFile]] = None,
+        tools: Optional[Sequence[ToolDefinition]] = None,
     ) -> AgentResponse:
         """Run the agent and return the full response.
 
@@ -37,8 +38,9 @@ class _AgentNamespace:
             message: The instruction for the agent.
             capabilities: Capabilities to enable (e.g. ``["research", "documents"]``).
             files: Files to include as context.
+            tools: Custom tool definitions for function calling.
         """
-        body = self._build_body(message, capabilities=capabilities, files=files, stream=False)
+        body = self._build_body(message, capabilities=capabilities, files=files, tools=tools, stream=False)
         resp = self._client._request("/v1/agent", body)
         return AgentResponse.from_dict(resp.json())
 
@@ -56,9 +58,68 @@ class _AgentNamespace:
             capabilities: Capabilities to enable (e.g. ``["research", "documents"]``).
             files: Files to include as context.
         """
-        body = self._build_body(message, capabilities=capabilities, files=files, stream=True)
+        body = self._build_body(message, capabilities=capabilities, files=files, tools=None, stream=True)
         resp = self._client._request("/v1/agent", body, stream=True)
         return AgentStream(resp)
+
+    def submit_tool_outputs(
+        self,
+        request_id: str,
+        tool_outputs: Sequence[ToolOutput],
+        *,
+        compute_instance: Optional[str] = None,
+    ) -> AgentResponse:
+        """Submit tool call results and continue execution.
+
+        Args:
+            request_id: The request ID from the initial agent response.
+            tool_outputs: Tool outputs to submit.
+            compute_instance: Compute instance ID for machine affinity routing.
+        """
+        body: Dict[str, Any] = {
+            "tool_outputs": [asdict(o) for o in tool_outputs],
+        }
+        if compute_instance is not None:
+            body["_compute_instance"] = compute_instance
+        resp = self._client._request(f"/v1/agent/{request_id}/tool-outputs", body)
+        return AgentResponse.from_dict(resp.json())
+
+    def run_with_tools(
+        self,
+        message: str,
+        *,
+        tools: Sequence[ToolDefinition],
+        handler: Callable[[Dict[str, Any]], str],
+        capabilities: Optional[Sequence[str]] = None,
+        files: Optional[Sequence[InputFile]] = None,
+    ) -> AgentResponse:
+        """Run the agent with tools, automatically handling the tool call loop.
+
+        Args:
+            message: The instruction for the agent.
+            tools: Custom tool definitions.
+            handler: A callable that receives a tool call dict (with ``id``, ``name``,
+                ``arguments``) and returns the result as a string.
+            capabilities: Capabilities to enable.
+            files: Files to include as context.
+        """
+        data = self.run(message, capabilities=capabilities, files=files, tools=tools)
+
+        while data.status == "requires_tool_outputs":
+            outputs = [
+                ToolOutput(
+                    tool_call_id=tc.id,
+                    output=handler({"id": tc.id, "name": tc.name, "arguments": tc.arguments}),
+                )
+                for tc in data.tool_calls
+            ]
+            data = self.submit_tool_outputs(
+                data.id,
+                outputs,
+                compute_instance=data._compute_instance,
+            )
+
+        return data
 
     @staticmethod
     def _build_body(
@@ -66,6 +127,7 @@ class _AgentNamespace:
         *,
         capabilities: Optional[Sequence[str]],
         files: Optional[Sequence[InputFile]],
+        tools: Optional[Sequence[ToolDefinition]],
         stream: bool,
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = {"message": message, "stream": stream}
@@ -73,6 +135,8 @@ class _AgentNamespace:
             body["capabilities"] = list(capabilities)
         if files is not None:
             body["files"] = [asdict(f) for f in files]
+        if tools is not None:
+            body["tools"] = [asdict(t) for t in tools]
         return body
 
 

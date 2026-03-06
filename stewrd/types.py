@@ -19,6 +19,40 @@ class InputFile:
     content: str
 
 
+@dataclass
+class ToolDefinition:
+    """A custom tool definition for function calling."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+
+
+@dataclass
+class ToolCall:
+    """A tool call returned by the agent."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ToolCall":
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            arguments=data.get("arguments", {}),
+        )
+
+
+@dataclass
+class ToolOutput:
+    """A tool output to submit back to the agent."""
+
+    tool_call_id: str
+    output: str
+
+
 # ---------------------------------------------------------------------------
 # Response types
 # ---------------------------------------------------------------------------
@@ -43,17 +77,17 @@ class ResponseFile:
 
 @dataclass
 class Usage:
-    """Token / request usage for a run."""
+    """Credit and token usage for a run."""
 
-    requests_used: int = 0
-    requests_limit: int = 0
+    credits_this_request: int = 0
+    credits_remaining: int = 0
     tokens_used: int = 0
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Usage":
         return cls(
-            requests_used=data.get("requests_used", 0),
-            requests_limit=data.get("requests_limit", 0),
+            credits_this_request=data.get("credits_this_request", 0),
+            credits_remaining=data.get("credits_remaining", 0),
             tokens_used=data.get("tokens_used", 0),
         )
 
@@ -81,22 +115,28 @@ class AgentResponse:
 
     id: str = ""
     object: str = "agent.response"
+    status: str = "completed"
     message: str = ""
+    tool_calls: List[ToolCall] = field(default_factory=list)
     capabilities_used: List[str] = field(default_factory=list)
     files: List[ResponseFile] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)
     meta: Meta = field(default_factory=Meta)
+    _compute_instance: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AgentResponse":
         return cls(
             id=data.get("id") or data.get("request_id", ""),
             object=data.get("object", "agent.response"),
+            status=data.get("status", "completed"),
             message=data.get("message", ""),
+            tool_calls=[ToolCall.from_dict(tc) for tc in data.get("tool_calls", [])],
             capabilities_used=data.get("capabilities_used", []),
             files=[ResponseFile.from_dict(f) for f in data.get("files", [])],
             usage=Usage.from_dict(data.get("usage", {})),
             meta=Meta.from_dict(data.get("meta", {})),
+            _compute_instance=data.get("_compute_instance"),
         )
 
 

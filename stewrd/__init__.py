@@ -12,12 +12,15 @@ from .types import (
     ResponseFile,
     StreamEvent,
     TokenEvent,
+    ToolCall,
+    ToolDefinition,
     ToolEndEvent,
+    ToolOutput,
     ToolStartEvent,
     Usage,
 )
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 
 __all__ = [
     "Stewrd",
@@ -26,6 +29,9 @@ __all__ = [
     "AgentResponse",
     "InputFile",
     "ResponseFile",
+    "ToolDefinition",
+    "ToolCall",
+    "ToolOutput",
     "Usage",
     "Meta",
     "TokenEvent",
